@@ -32,6 +32,7 @@ button { cursor: pointer; }
 .brand-mark rect { fill: var(--accent); }
 .brand-mark .lines { stroke: var(--sheet); stroke-width: 2; stroke-linecap: round; }
 .brand-mark circle, .brand-mark .handle { fill: none; stroke: var(--highlight); stroke-width: 2; stroke-linecap: round; }
+.brand-ai { margin-left: -4px; padding: 2px 6px; border-radius: 5px; background: var(--highlight); font: 600 11px var(--mono); letter-spacing: .06em; color: var(--ink); }
 .topbar nav { display: flex; gap: 22px; font-size: 14px; color: var(--muted); }
 .topbar nav a { text-decoration: none; }
 .topbar nav a:hover { color: var(--accent); }

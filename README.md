@@ -1,6 +1,6 @@
-# .gov Website Scanner
+# GovScrape AI
 
-Cancer research from government sources: scan .gov pages (National Cancer Institute, NIH, CDC, and others), get a citation-grounded brief, and question it with a retrieval chatbot. For research and education, not medical advice.
+An AI scraper for cancer research from government sources: scrape .gov pages (National Cancer Institute, NIH, CDC, and others), get a citation-grounded brief, and question it with a retrieval chatbot. For research and education, not medical advice.
 
 [Live app](https://sebastianlau1.github.io/ai-web-research-summarizer/) · [Portfolio](https://sebastianlau.is-a.dev)
 
