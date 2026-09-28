@@ -1,8 +1,85 @@
-const stop=new Set('the and for that with from this have are was were will into their they them our not but has can its you your about what how does do did'.split(' '));
-const tokens=s=>(s.toLowerCase().match(/[a-z][a-z0-9'-]{2,}/g)||[]).filter(t=>!stop.has(t));
-export function rank(sources,question='',limit=5){const passages=sources.flatMap((s,index)=>s.text.split(/(?<=[.!?])\s+|\n+/).map(text=>({text:text.trim(),source:index})).filter(p=>p.text.length>=45&&p.text.length<=700));const docs=passages.map(p=>new Set(tokens(p.text))),q=new Set(tokens(question));const freq=new Map;docs.forEach(d=>d.forEach(t=>freq.set(t,(freq.get(t)||0)+1)));const ranked=passages.map((p,i)=>{const terms=docs[i],overlap=[...q].filter(t=>terms.has(t));const score=q.size?overlap.reduce((s,t)=>s+Math.log(1+passages.length/(freq.get(t)||1)),0):[...terms].reduce((s,t)=>s+Math.log(1+(freq.get(t)||1)),0)/Math.sqrt(terms.size||1);return {...p,score,overlap:overlap.length}}).filter(p=>!q.size||p.overlap>0).sort((a,b)=>b.score-a.score);const seen=new Set;return ranked.filter(p=>{const key=tokens(p.text).join(' ');if(seen.has(key))return false;seen.add(key);return true}).slice(0,limit);}
-export const samples=[
- {title:'Retrieval evaluation field notes',url:'',sample:true,text:'Retrieval quality can be evaluated by creating a set of questions with known relevant passages. Recall at k measures whether the expected evidence appears among the first k retrieved results. A chronological holdout helps reveal whether a system can generalize beyond the documents used during development. Keyword retrieval provides a transparent baseline, but it can miss paraphrases and semantic relationships. Evaluate citations separately from the fluency of the final answer. A useful research assistant should admit when its sources do not contain an answer.'},
- {title:'Designing a source-grounded assistant',url:'',sample:true,text:'A source-grounded assistant keeps the original passage alongside each claim so a reader can inspect the evidence. Scraping a webpage is only the first step; navigation, repeated boilerplate, and unrelated text can affect retrieval quality. The summary should distinguish between statements found in the sources and conclusions inferred by a model. A limitation of extractive summaries is that they reuse source sentences instead of combining ideas into new prose. Conflicting sources should be presented with their context rather than silently reconciled. A generative model needs explicit instructions to treat retrieved documents as data rather than instructions.'},
- {title:'Practical constraints for web research',url:'',sample:true,text:'Public websites can block automated requests or render their articles only after JavaScript runs. A scraper should impose timeouts and size limits so an oversized response cannot exhaust its resources. Restrict outbound requests to public HTTPS destinations and revalidate redirects to reduce server-side request forgery risk. Some pages require authentication or permission that a public demo should not attempt to bypass. Research results can become stale, so retain source URLs and collection timestamps. This demonstration uses original sample notes, not a live crawl or a benchmark dataset.'}
+// Extractive evidence ranking: split sources into passages and score them with IDF-weighted term overlap.
+
+const stop = new Set(
+  "the and for that with from this have are was were will into their they them our not but has can its you your about what how does do did"
+    .split(" "),
+);
+
+/** Conservative suffix stripping so "limitations" matches "limitation" and "evaluated" matches "evaluate". */
+export function stem(word) {
+  let w = word.replace(/'s$/, "");
+  if (w.length > 4 && w.endsWith("ies")) w = `${w.slice(0, -3)}y`;
+  else if (w.length > 3 && /[^su]s$/.test(w)) w = w.slice(0, -1);
+  if (w.length > 5 && w.endsWith("ing")) w = w.slice(0, -3);
+  else if (w.length > 4 && w.endsWith("ed")) w = w.slice(0, -2);
+  if (w.length > 4 && w.endsWith("e")) w = w.slice(0, -1);
+  return w;
+}
+
+const tokens = (text) => (text.toLowerCase().match(/[a-z][a-z0-9'-]{2,}/g) || [])
+  .filter((token) => !stop.has(token))
+  .map(stem);
+
+/**
+ * Rank passages across sources. With a question, only passages sharing a term are returned,
+ * weighted by rarity; without one, passages rich in collection-wide terms rank first.
+ */
+export function rank(sources, question = "", limit = 5) {
+  const passages = sources.flatMap((source, index) => source.text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((text) => ({ text: text.trim(), source: index }))
+    .filter((p) => p.text.length >= 45 && p.text.length <= 700));
+
+  const docs = passages.map((p) => new Set(tokens(p.text)));
+  const query = new Set(tokens(question));
+  const frequency = new Map();
+  docs.forEach((doc) => doc.forEach((term) => frequency.set(term, (frequency.get(term) || 0) + 1)));
+
+  const ranked = passages
+    .map((passage, i) => {
+      const terms = docs[i];
+      const overlap = [...query].filter((term) => terms.has(term));
+      const score = query.size
+        ? overlap.reduce((sum, term) => sum + Math.log(1 + passages.length / (frequency.get(term) || 1)), 0)
+        : [...terms].reduce((sum, term) => sum + Math.log(1 + (frequency.get(term) || 1)), 0) / Math.sqrt(terms.size || 1);
+      return { ...passage, score, overlap: overlap.length };
+    })
+    .filter((p) => !query.size || p.overlap > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const seen = new Set();
+  return ranked
+    .filter((p) => {
+      const key = tokens(p.text).join(" ");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+/** The scanner only reads U.S. government sites (cancer.gov, nih.gov, cdc.gov, and so on). */
+export const isGovHost = (hostname) => /(^|\.)[a-z0-9-]+\.gov$/i.test(hostname);
+
+// Original demo notes written for this project. They summarize general, well-established
+// information and are not text from any agency or medical advice.
+export const samples = [
+  {
+    title: "Clinical trial phases, in brief",
+    url: "",
+    sample: true,
+    text: "Clinical trials test new ways to prevent, detect, or treat cancer in people who volunteer to take part. Phase I trials usually enroll a small number of people and focus on safety and finding a suitable dose. Phase II trials look at whether a treatment works against a specific cancer and continue to monitor side effects. Phase III trials compare a new treatment with the current standard of care, usually in hundreds or thousands of participants. Every trial has eligibility criteria, such as cancer type, stage, and prior treatment, that decide who can join. Participants give informed consent and can leave a trial at any time. Publicly and privately funded studies are listed in the registry at ClinicalTrials.gov.",
+  },
+  {
+    title: "Screening: benefits and harms",
+    url: "",
+    sample: true,
+    text: "Cancer screening looks for cancer before a person has any symptoms, when it may be easier to treat. Common screening tests include mammograms for breast cancer, colonoscopy and stool-based tests for colorectal cancer, and Pap and HPV tests for cervical cancer. Low-dose CT scans are used to screen some adults with a heavy smoking history for lung cancer. Screening can also cause harm, including false-positive results that lead to extra tests and anxiety. Overdiagnosis happens when screening finds a cancer that would never have caused symptoms or death. Recommendations depend on age, sex, family history, and other risk factors, so screening decisions are best made with a clinician.",
+  },
+  {
+    title: "Reading cancer statistics",
+    url: "",
+    sample: true,
+    text: "Incidence is the number of new cancer cases diagnosed in a population over a period of time, while mortality counts deaths from cancer. Rates are usually reported per 100,000 people so that populations of different sizes can be compared. Age-adjusted rates account for differences in age structure, which matters because cancer risk rises with age. Five-year relative survival compares people with a cancer to people of the same age and sex in the general population. Survival statistics describe large groups of patients diagnosed years ago and cannot predict what will happen to one person. The National Cancer Institute's SEER program collects population-based data on cancer incidence and survival in the United States.",
+  },
 ];

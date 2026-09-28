@@ -3,160 +3,122 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta
-      name="description"
-      content="Collect web sources, build a cited brief, and ask questions with free retrieval or optional Grok."
-    >
-    <title>Research Desk · Sebastian Lau</title>
+    <meta name="description" content="Scan .gov pages for cancer research, get a brief where every line cites its source, and ask questions with free retrieval or optional Grok.">
+    <meta name="theme-color" content="#f4efe6">
+    <title>.gov Website Scanner · Sebastian Lau</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f5c45'/%3E%3Cpath d='M9 10h10M9 15h7M9 20h5' stroke='%23fffdf8' stroke-width='2' stroke-linecap='round'/%3E%3Ccircle cx='21' cy='19' r='4' fill='none' stroke='%23f9e79f' stroke-width='2'/%3E%3Cpath d='M24 22l3 3' stroke='%23f9e79f' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap">
     <link rel="stylesheet" href="styles.css">
-    <style>
-      .researchgrid{grid-template-columns:340px minmax(0,1fr)}
-      .source{padding:14px;background:#0b1119;border:1px solid var(--line);border-radius:8px}
-      .source strong{font-size:14px;display:block}
-      .source p{margin:6px 0 0;font-size:12px;color:var(--muted)}
-      .finding{display:grid;grid-template-columns:34px 1fr;gap:14px;padding:18px 0;border-bottom:1px solid var(--line)}
-      .finding:last-child{border:0}
-      .finding .number{font-family:'IBM Plex Mono';color:var(--accent);font-size:14px}
-      .finding p{margin:0 0 10px}
-      .cite{font-size:12px;color:var(--accent);border-bottom:1px solid #b9f87955}
-      .chat{padding:22px;max-height:400px;overflow:auto;display:grid;gap:14px}
-      .message{padding:16px 18px;border-radius:10px;max-width:94%;font-size:14px;line-height:1.7;white-space:pre-wrap}
-      .assistant{background:#19232d}
-      .user{background:#b9f87915;border:1px solid #b9f87933;margin-left:auto}
-      .chat-form{display:flex;gap:10px;margin-top:14px}
-      .chat-form input{min-width:0}
-      .suggestions button{font-size:12px;padding:7px 10px}
-      .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-      @media(max-width:980px){.researchgrid{grid-template-columns:1fr}}
-    </style>
   </head>
   <body>
-    <header class="appbar">
-      <a class="brand" href="./"><span class="brandmark">⌕</span>Research Desk</a>
+    <header class="topbar">
+      <a class="brand" href="./">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" /><path class="lines" d="M9 10h10M9 15h7M9 20h5" /><circle cx="21" cy="19" r="4" /><path class="handle" d="M24 22l3 3" /></svg>
+        .gov Website Scanner
+      </a>
       <nav>
         <a href="https://sebastianlau.is-a.dev">Portfolio</a>
-        <a
-          href="https://github.com/SebastianLau1/ai-web-research-summarizer"
-          target="_blank"
-          rel="noreferrer"
-        >Source ↗</a>
+        <a href="https://github.com/SebastianLau1/ai-web-research-summarizer" target="_blank" rel="noreferrer">Source ↗</a>
       </nav>
     </header>
+
     <main>
-      <div class="intro">
-        <div>
-          <span class="kicker">01 / SOURCE-GROUNDED RESEARCH</span>
-          <h1>Follow the evidence.</h1>
-          <p>Collect web sources, build a cited brief, and ask questions about what you found.</p>
-        </div>
-        <span class="badge">PERSONAL PROJECT / 2026</span>
-      </div>
-      <div class="grid researchgrid">
-        <aside class="panel pad stack">
-          <div>
-            <span class="kicker">Your collection</span>
-            <h2 style="margin-top:10px">Start with a source.</h2>
+      <section class="masthead">
+        <p class="kicker">Cancer research from .gov sources</p>
+        <h1>Follow the <em>evidence.</em></h1>
+        <p class="standfirst">Scan up to three pages from government sites like the National Cancer Institute, NIH, or CDC. Get a brief where every line points back to the page it came from, then question the collection. Nothing is written that the sources don’t say.</p>
+      </section>
+
+      <div class="workspace">
+        <aside class="library" aria-labelledby="library-title">
+          <div class="section-head">
+            <h2 id="library-title">Library</h2>
+            <span class="count" id="source-count">0 sources</span>
           </div>
-          <form id="source-form" class="stack">
-            <div>
-              <label for="urls">Public webpage URLs</label>
-              <textarea
-                id="urls"
-                rows="4"
-                placeholder="https://example.com/article&#10;One URL per line · up to 3"
-              ></textarea>
-              <p class="subtle" style="margin:8px 0 0">
-                The public demo sends these URLs to Jina Reader for extraction.
-              </p>
-            </div>
-            <button class="primary full" id="collect">Collect &amp; summarize ↗</button>
+
+          <form id="source-form" class="collect">
+            <label for="urls">.gov pages to scan</label>
+            <textarea id="urls" rows="4" placeholder="https://www.cancer.gov/...&#10;One .gov URL per line, up to 3" spellcheck="false"></textarea>
+            <button class="btn primary" id="collect">Scan &amp; summarize</button>
+            <p class="note">Only .gov sites. The public demo fetches pages through Jina Reader.</p>
           </form>
-          <button id="sample" class="full">Load sample research</button>
-          <div class="status" id="status" role="status" aria-live="polite"></div>
-          <details>
-            <summary>Or paste your own source text</summary>
-            <form id="paste-form" class="stack" style="margin-top:16px">
-              <div>
-                <label for="source-title">Source title</label>
+
+          <div class="alt-actions">
+            <button type="button" class="link" id="sample">Load sample collection</button>
+            <details>
+              <summary>Paste text instead</summary>
+              <form id="paste-form" class="paste">
+                <label for="source-title">Title</label>
                 <input id="source-title" required maxlength="120" placeholder="Article or report name">
-              </div>
-              <div>
-                <label for="source-text">Source text</label>
+                <label for="source-text">Text</label>
                 <textarea id="source-text" required minlength="60" maxlength="20000" rows="6"></textarea>
-              </div>
-              <button>Add source</button>
-            </form>
-          </details>
-          <div class="divider"></div>
-          <div>
-            <span class="caption" id="source-count">0 SOURCES</span>
-            <div id="sources" class="stack" style="margin-top:14px"></div>
+                <button class="btn">Add to library</button>
+              </form>
+            </details>
+          </div>
+
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+          <ol class="sources" id="sources"></ol>
+        </aside>
+
+        <article class="brief" aria-labelledby="brief-title">
+          <header class="brief-head">
+            <div>
+              <p class="dateline" id="dateline"></p>
+              <h2 id="brief-title">Research brief</h2>
+              <p class="brief-meta"><span id="sources-stat">0</span> sources · <span id="evidence-stat">0</span> passages · extractive, nothing paraphrased</p>
+            </div>
+            <button type="button" class="btn" id="export" disabled>Export .md</button>
+          </header>
+          <ol class="findings" id="brief">
+            <li class="empty">Load the sample collection or add a source to begin.</li>
+          </ol>
+        </article>
+
+        <aside class="ask" aria-labelledby="ask-title">
+          <div class="section-head">
+            <h2 id="ask-title">Ask your sources</h2>
+            <span class="count" id="provider-note">Cited answers</span>
+          </div>
+          <div class="thread" id="chat" aria-live="polite"></div>
+          <div class="suggestions">
+            <button type="button" data-question="What happens in each trial phase?">What happens in each trial phase?</button>
+            <button type="button" data-question="What are the harms of screening?">What are the harms of screening?</button>
+            <button type="button" data-question="What does five-year survival mean?">What does five-year survival mean?</button>
+          </div>
+          <form id="chat-form" class="composer">
+            <label class="sr" for="question">Question about your sources</label>
+            <input id="question" placeholder="What does the evidence say?" maxlength="500" required autocomplete="off">
+            <button class="btn primary" id="ask-button" aria-label="Ask">Ask</button>
+          </form>
+          <div class="mode">
+            <label for="provider">Answer with</label>
+            <select id="provider">
+              <option value="retrieval">Free evidence retrieval</option>
+              <option value="grok">Grok, with retrieval fallback</option>
+            </select>
           </div>
         </aside>
-        <section class="stack">
-          <div class="stats">
-            <div class="stat">
-              <span>Sources</span>
-              <strong id="sources-stat">00</strong>
-              <small>Trace every finding</small>
-            </div>
-            <div class="stat">
-              <span>Evidence passages</span>
-              <strong id="evidence-stat">00</strong>
-              <small>Ranked by relevance</small>
-            </div>
-            <div class="stat">
-              <span>Processing</span>
-              <strong style="font-size:23px">Hybrid</strong>
-              <small>Free retrieval + optional Grok</small>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panelhead">
-              <h2>Research brief</h2>
-              <button id="export" disabled>Export ↗</button>
-            </div>
-            <div class="pad" id="brief">
-              <div class="empty">Load the sample collection or add a source to begin.</div>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panelhead">
-              <h2>Ask your sources</h2>
-              <span class="pill" id="provider-note">CITED ANSWERS</span>
-            </div>
-            <div id="chat" class="chat" aria-live="polite">
-              <div class="message assistant">
-                Ask a question and I’ll use Grok when it is connected, with free evidence
-                retrieval as the automatic fallback.
-              </div>
-            </div>
-            <div class="pad" style="padding-top:0">
-              <div style="margin-bottom:14px">
-                <label for="provider">Answer mode</label>
-                <select id="provider">
-                  <option value="retrieval">Free evidence retrieval</option>
-                  <option value="grok">Grok AI with retrieval fallback</option>
-                </select>
-              </div>
-              <div class="row suggestions">
-                <button data-question="How do we evaluate retrieval quality?">Evaluate retrieval</button>
-                <button data-question="What are the limitations?">Find limitations</button>
-              </div>
-              <form id="chat-form" class="chat-form">
-                <label class="sr" for="question">Question about your sources</label>
-                <input id="question" placeholder="What does the evidence say?" maxlength="500" required>
-                <button class="primary" id="ask-button">Ask ↗</button>
-              </form>
-            </div>
-          </div>
-        </section>
       </div>
-      <footer class="footer">
-        <span>Built by Sebastian Lau · Explore, inspect, experiment.</span>
-        <a href="https://github.com/SebastianLau1/ai-web-research-summarizer">Read the architecture ↗</a>
-      </footer>
+
+      <section class="colophon" aria-labelledby="how-title">
+        <h2 id="how-title">How a brief is made</h2>
+        <ol>
+          <li><b>Scan.</b> Each .gov URL is fetched and reduced to readable text. On a server deploy, a Worker validates the .gov host, DNS, redirects, size, and timeouts first.</li>
+          <li><b>Split and rank.</b> Text is cut into sentence-level passages, then scored by rare-term overlap across the whole collection.</li>
+          <li><b>Cite.</b> The brief quotes the top passages verbatim and tags each with its source, so every line can be checked.</li>
+          <li><b>Answer.</b> Questions retrieve the best-matching passages. With Grok connected, only those passages are sent, marked as untrusted data.</li>
+        </ol>
+      </section>
     </main>
+
+    <footer class="footer">
+      <span>.gov Website Scanner · built by <a href="https://sebastianlau.is-a.dev">Sebastian Lau</a> · for research and education, not medical advice</span>
+      <a href="https://github.com/SebastianLau1/ai-web-research-summarizer" target="_blank" rel="noreferrer">View the code on GitHub ↗</a>
+    </footer>
+
     <script type="module" src="app.js"></script>
   </body>
 </html>

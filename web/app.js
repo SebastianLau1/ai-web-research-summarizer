@@ -1,8 +1,15 @@
-import { rank, samples } from "./research.js";
+import { isGovHost, rank, samples } from "./research.js";
 
 const $ = (id) => document.getElementById(id);
+const PALETTE = ["#1f5c45", "#2f58a8", "#b0482a", "#7b4ea3", "#9a7412", "#1d7a8a", "#a33b6b", "#4b5d23"];
+const STATIC_HOST = location.hostname.endsWith(".github.io"); // GitHub Pages has no API routes or secrets
+const MAX_SOURCES = 8;
+const today = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" });
+
 let sources = [];
 let evidence = [];
+
+const colorOf = (index) => PALETTE[index % PALETTE.length];
 
 function el(tag, text, className) {
   const element = document.createElement(tag);
@@ -16,61 +23,186 @@ function status(text, error = false) {
   $("status").classList.toggle("error", error);
 }
 
+/** A numbered chip that links to, and is colored like, its source card. */
+function citation(sourceIndex) {
+  const link = el("a", String(sourceIndex + 1), "cite");
+  link.href = `#source-${sourceIndex + 1}`;
+  link.title = sources[sourceIndex]?.title ?? `Source ${sourceIndex + 1}`;
+  link.dataset.source = sourceIndex;
+  link.style.setProperty("--c", colorOf(sourceIndex));
+  return link;
+}
+
+/* ---------- Library and brief ---------- */
+
 function render() {
   evidence = rank(sources);
-  $("sources").replaceChildren();
-  sources.forEach((source, index) => {
-    const card = el("article", undefined, "source");
+
+  $("sources").replaceChildren(...sources.map((source, index) => {
+    const card = el("li", undefined, "source");
     card.id = `source-${index + 1}`;
-    card.append(
-      el("strong", `[${index + 1}] ${source.title}`),
-      el(
-        "p",
-        source.sample
-          ? "Original sample notes · demo data"
-          : source.url
-            ? new URL(source.url).hostname
-            : "Pasted text · local",
-      ),
+    card.dataset.source = index;
+    card.style.setProperty("--c", colorOf(index));
+    const body = el("div");
+    body.append(
+      el("strong", source.title),
+      el("p", source.sample ? "Sample notes · demo data" : source.url ? new URL(source.url).hostname : "Pasted text · stays local"),
     );
     if (source.url) {
-      const link = el("a", "Open source ↗", "cite");
+      const link = el("a", "Open original ↗");
       link.href = source.url;
       link.target = "_blank";
       link.rel = "noreferrer";
-      card.append(link);
+      body.append(link);
     }
-    $("sources").append(card);
-  });
+    card.append(el("span", String(index + 1), "source-num"), body);
+    return card;
+  }));
 
-  $("source-count").textContent = `${sources.length} SOURCES`;
-  $("sources-stat").textContent = String(sources.length).padStart(2, "0");
-  $("evidence-stat").textContent = String(evidence.length).padStart(2, "0");
-  $("brief").replaceChildren();
+  $("source-count").textContent = `${sources.length} ${sources.length === 1 ? "source" : "sources"}`;
+  $("sources-stat").textContent = String(sources.length);
+  $("evidence-stat").textContent = String(evidence.length);
+  $("dateline").textContent = `Compiled ${today.format(new Date())}`;
+
   if (!evidence.length) {
-    $("brief").append(el("p", "No usable passages yet. Add a longer source text.", "subtle"));
+    $("brief").replaceChildren(el("li", sources.length
+      ? "No usable passages yet. Add a longer source."
+      : "Load the sample collection or add a source to begin.", "empty"));
+  } else {
+    $("brief").replaceChildren(...evidence.map((passage, i) => {
+      const item = el("li", undefined, "finding");
+      item.dataset.source = passage.source;
+      item.style.setProperty("--i", i);
+      const quote = el("blockquote");
+      quote.append(passage.text, " ", citation(passage.source));
+      const body = el("div");
+      body.append(quote, el("footer", sources[passage.source].title));
+      item.append(el("span", String(i + 1), "finding-num"), body);
+      return item;
+    }));
   }
-  evidence.forEach((passage, index) => {
-    const finding = el("article", undefined, "finding");
-    const body = el("div");
-    body.append(el("p", passage.text));
-    const link = el("a", `[${passage.source + 1}] ${sources[passage.source].title}`, "cite");
-    link.href = `#source-${passage.source + 1}`;
-    body.append(link);
-    finding.append(el("span", String(index + 1).padStart(2, "0"), "number"), body);
-    $("brief").append(finding);
-  });
   $("export").disabled = !evidence.length;
 }
 
-function retrievalAnswer(question) {
-  const results = rank(sources, question, 5);
-  if (!results.length) {
-    return "I couldn’t find a matching passage in this collection. Try more specific wording or add another source.";
-  }
-  return "Relevant source passages:\n\n" +
-    results.map((passage) => `${passage.text} [${passage.source + 1}]`).join("\n\n");
+/** Hovering a source, finding, or citation traces the same source everywhere on the page. */
+function trace(index) {
+  document.querySelectorAll(".source").forEach((card) => {
+    card.classList.toggle("is-lit", Number(card.dataset.source) === index);
+  });
+  document.querySelectorAll(".finding").forEach((finding) => {
+    const match = Number(finding.dataset.source) === index;
+    finding.classList.toggle("is-lit", index !== null && match);
+    finding.classList.toggle("is-dim", index !== null && !match);
+  });
 }
+
+function traceFrom(event) {
+  const target = event.target.closest?.("[data-source]");
+  trace(target ? Number(target.dataset.source) : null);
+}
+
+document.addEventListener("pointerover", traceFrom);
+document.addEventListener("focusin", traceFrom);
+
+/* ---------- Conversation ---------- */
+
+function scrollThread() {
+  $("chat").scrollTop = $("chat").scrollHeight;
+}
+
+function message(className, ...children) {
+  const node = el("div", undefined, `msg ${className}`);
+  node.append(...children);
+  $("chat").append(node);
+  scrollThread();
+  return node;
+}
+
+function resetThread(text) {
+  $("chat").replaceChildren();
+  message("assistant", el("p", text));
+}
+
+/** Split model output into paragraphs and turn valid [n] markers into citation chips. */
+function citedParagraphs(text) {
+  return text.split(/\n{2,}/).filter((part) => part.trim()).map((part) => {
+    const paragraph = el("p");
+    for (const piece of part.split(/(\[\d+\])/)) {
+      const match = piece.match(/^\[(\d+)\]$/);
+      const index = match ? Number(match[1]) - 1 : -1;
+      paragraph.append(match && sources[index] ? citation(index) : piece);
+    }
+    return paragraph;
+  });
+}
+
+function retrievalAnswer(question) {
+  const results = rank(sources, question, 4);
+  if (!results.length) {
+    return [el("p", "I couldn’t find a passage that matches. Try different wording or add another source.")];
+  }
+  return [
+    el("p", results.length === 1 ? "One passage speaks to this:" : `${results.length} passages speak to this:`),
+    ...results.map((passage) => {
+      const quote = el("blockquote");
+      quote.append(passage.text, " ", citation(passage.source));
+      return quote;
+    }),
+  ];
+}
+
+async function askGrok(question, passages) {
+  if (STATIC_HOST) throw Error("Grok needs a server deployment with an xAI key.");
+  const response = await fetch("/api/research/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      evidence: passages.map((passage) => ({ source: passage.source + 1, text: passage.text })),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const data = await response.json();
+  if (!response.ok) throw Error(data.error || "Grok is unavailable.");
+  return data;
+}
+
+async function ask(question) {
+  if (!sources.length) {
+    status("Add a source before asking a question.", true);
+    return;
+  }
+  message("user", question);
+  const reply = message("assistant pending", "Reading the evidence…");
+  $("question").value = "";
+  $("ask-button").disabled = true;
+
+  try {
+    const passages = rank(sources, question, 8);
+    if ($("provider").value === "grok" && passages.length) {
+      try {
+        const data = await askGrok(question, passages);
+        reply.replaceChildren(...citedParagraphs(data.answer));
+        $("provider-note").textContent = `Answered by ${data.model || "Grok"}`;
+      } catch (error) {
+        reply.replaceChildren(
+          ...retrievalAnswer(question),
+          el("small", `Grok was unavailable, so this used free retrieval. ${error.message}`),
+        );
+        $("provider-note").textContent = "Retrieval fallback";
+      }
+      return;
+    }
+    reply.replaceChildren(...retrievalAnswer(question));
+    $("provider-note").textContent = "Free retrieval";
+  } finally {
+    reply.classList.remove("pending");
+    $("ask-button").disabled = false;
+    scrollThread();
+  }
+}
+
+/* ---------- Collection ---------- */
 
 async function collectWithReader(urls) {
   const settled = await Promise.allSettled(urls.map(async (raw) => {
@@ -83,6 +215,7 @@ async function collectWithReader(urls) {
     if (url.protocol !== "https:" || url.username || url.password) {
       throw Error("Only public HTTPS pages are supported.");
     }
+    if (!isGovHost(url.hostname)) throw Error(`${url.hostname} isn’t a .gov site.`);
     const response = await fetch(`https://r.jina.ai/${url.href}`, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(35_000),
@@ -99,6 +232,7 @@ async function collectWithReader(urls) {
       reader: "Jina Reader",
     };
   }));
+
   const collected = [];
   const errors = [];
   settled.forEach((result, index) => {
@@ -110,7 +244,7 @@ async function collectWithReader(urls) {
 }
 
 async function collectSources(urls) {
-  if (!location.hostname.endsWith(".github.io")) {
+  if (!STATIC_HOST) {
     try {
       const response = await fetch("/api/research/collect", {
         method: "POST",
@@ -122,7 +256,7 @@ async function collectSources(urls) {
       if (!type.includes("application/json")) throw Error("No local collection API.");
       const data = await response.json();
       if (!response.ok) throw Error(data.error || "Collection failed.");
-      return { ...data, service: "Research Desk Worker" };
+      return { ...data, service: "the scanner’s Worker" };
     } catch (error) {
       if (error.name === "TimeoutError") throw error;
     }
@@ -130,86 +264,41 @@ async function collectSources(urls) {
   return collectWithReader(urls);
 }
 
-async function ask(question) {
-  if (!sources.length) {
-    status("Add a source before asking a question.", true);
-    return;
-  }
-  $("chat").append(el("div", question, "message user"));
-  const pending = el("div", "Reviewing the evidence…", "message assistant");
-  $("chat").append(pending);
-  $("chat").scrollTop = $("chat").scrollHeight;
-  $("question").value = "";
-  $("ask-button").disabled = true;
-
-  const passages = rank(sources, question, 8);
-  const provider = $("provider").value;
-  if (provider === "grok" && passages.length) {
-    try {
-      if (location.hostname.endsWith(".github.io")) {
-        throw Error("Grok requires a server deployment with an xAI API key.");
-      }
-      const response = await fetch("/api/research/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          evidence: passages.map((passage) => ({
-            source: passage.source + 1,
-            text: passage.text,
-          })),
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const data = await response.json();
-      if (!response.ok) throw Error(data.error || "Grok is unavailable.");
-      pending.textContent = data.answer;
-      $("provider-note").textContent = `ANSWERED BY ${data.model || "GROK"}`;
-      return;
-    } catch (error) {
-      pending.textContent = retrievalAnswer(question) +
-        `\n\nGrok was unavailable, so Research Desk used free evidence retrieval. ${error.message}`;
-      $("provider-note").textContent = "FREE RETRIEVAL FALLBACK";
-      return;
-    } finally {
-      $("ask-button").disabled = false;
-      $("chat").scrollTop = $("chat").scrollHeight;
-    }
-  }
-
-  pending.textContent = retrievalAnswer(question);
-  $("provider-note").textContent = "FREE EVIDENCE RETRIEVAL";
-  $("ask-button").disabled = false;
-  $("chat").scrollTop = $("chat").scrollHeight;
-}
-
 $("source-form").onsubmit = async (event) => {
   event.preventDefault();
   const urls = $("urls").value.split(/\n/).map((value) => value.trim()).filter(Boolean);
   if (!urls.length || urls.length > 3) {
-    status("Enter between 1 and 3 public HTTPS URLs.", true);
+    status("Enter between 1 and 3 .gov URLs.", true);
+    return;
+  }
+  const outside = urls.filter((raw) => {
+    try {
+      return !isGovHost(new URL(raw).hostname);
+    } catch {
+      return true;
+    }
+  });
+  if (outside.length) {
+    status(`Only .gov pages can be scanned. Check: ${outside.join(", ")}`, true);
     return;
   }
   $("collect").disabled = true;
-  status("Fetching pages and extracting readable passages…");
+  status("Scanning pages and extracting readable passages…");
   try {
     const data = await collectSources(urls);
     if (data.sources.length) {
       sources = data.sources;
-      $("chat").replaceChildren(
-        el("div", "Collection updated. Ask a question about these sources.", "message assistant"),
-      );
       render();
+      resetThread("Collection updated. Ask a question about these sources.");
     }
     status(
-      `${data.sources.length} sources collected with ${data.service}.${data.errors.length ? ` ${data.errors.join(" ")}` : ""}`,
+      `${data.sources.length} ${data.sources.length === 1 ? "source" : "sources"} collected with ${data.service}.${data.errors.length ? ` ${data.errors.join(" ")}` : ""}`,
       Boolean(data.errors.length),
     );
   } catch (error) {
-    const message = error.name === "TimeoutError"
+    status(error.name === "TimeoutError"
       ? "The request timed out. Try fewer sources."
-      : `Could not collect sources: ${error.message}`;
-    status(message, true);
+      : `Could not collect sources: ${error.message}`, true);
   } finally {
     $("collect").disabled = false;
   }
@@ -218,30 +307,20 @@ $("source-form").onsubmit = async (event) => {
 $("sample").onclick = () => {
   sources = samples.map((source) => ({ ...source }));
   render();
-  $("chat").replaceChildren(
-    el(
-      "div",
-      "Sample research loaded. These are original demonstration notes, not live web results. Ask about evaluation, limitations, or source grounding.",
-      "message assistant",
-    ),
-  );
+  resetThread("Sample collection loaded. These are original demo notes on cancer research topics, not agency text or medical advice. Try a suggestion below.");
   status("Sample collection loaded. No web requests made.");
 };
 
 $("paste-form").onsubmit = (event) => {
   event.preventDefault();
-  if (sources.length >= 8) {
-    status("Start a new collection before adding more than 8 sources.", true);
+  if (sources.length >= MAX_SOURCES) {
+    status(`A collection holds up to ${MAX_SOURCES} sources. Load a new one to start over.`, true);
     return;
   }
-  sources.push({
-    title: $("source-title").value,
-    text: $("source-text").value,
-    url: "",
-  });
+  sources.push({ title: $("source-title").value, text: $("source-text").value, url: "" });
   render();
   event.target.reset();
-  status("Source added locally.");
+  status("Source added. It stays in this tab.");
 };
 
 $("chat-form").onsubmit = (event) => {
@@ -255,13 +334,18 @@ document.querySelectorAll("[data-question]").forEach((button) => {
 });
 
 $("export").onclick = () => {
-  const text = "# Research brief\n\n" +
-    "Mode: extractive evidence ranking with optional Grok answers.\n\n" +
-    evidence.map((passage) => `- ${passage.text} [${passage.source + 1}]`).join("\n\n") +
-    "\n\n## Sources\n\n" +
-    sources.map((source, index) =>
-      `[${index + 1}] ${source.title}${source.url ? ` — ${source.url}` : " (sample or pasted text)"}`
-    ).join("\n");
+  const text = [
+    "# Research brief",
+    "",
+    `Compiled ${today.format(new Date())}. Extractive: every line is quoted from the source it cites.`,
+    "",
+    ...evidence.map((passage, i) => `${i + 1}. ${passage.text} [${passage.source + 1}]`),
+    "",
+    "## Sources",
+    "",
+    ...sources.map((source, index) => `[${index + 1}] ${source.title}${source.url ? `: ${source.url}` : " (sample or pasted text)"}`),
+    "",
+  ].join("\n");
   const link = el("a");
   const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
   link.href = url;
@@ -269,5 +353,11 @@ $("export").onclick = () => {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 };
+
+if (STATIC_HOST) {
+  const grok = $("provider").querySelector('[value="grok"]');
+  grok.disabled = true;
+  grok.textContent = "Grok (needs a server deploy)";
+}
 
 $("sample").click();
